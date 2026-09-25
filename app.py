@@ -55,7 +55,7 @@ def running_instance(address: str, data_dir: Path) -> bool:
             return False
         with opener.open(address + "/", timeout=0.8) as response:
             page = response.read(65536).decode("utf-8")
-        return "<title>拾影 dv365-downloader · 本地视频下载</title>" in page and '/static/app.js' in page
+        return "<title>音视频下载 dv365-downloader · 本地视频下载</title>" in page and '/static/app.js' in page
     except (OSError, ValueError, UnicodeError):
         return False
 
@@ -178,7 +178,7 @@ def create_app(data_dir: Path | None = None, start_worker: bool = True):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="拾影 dv365-downloader · 本地视频下载器")
+    parser = argparse.ArgumentParser(description="音视频下载 dv365-downloader · 本地视频下载器")
     parser.add_argument("--port", type=int, default=8765, help="本机端口（默认 8765）")
     parser.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
     args = parser.parse_args()

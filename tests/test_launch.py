@@ -82,7 +82,7 @@ class InstanceRecognitionTests(unittest.TestCase):
         config = dict(app_id="previous-release", data_dir=str(directory),
                       download_dir=str(application.BASE_DIR / "downloads"), ffmpeg=True,
                       yt_dlp_version="2026.3.17", csrf_token="local-token")
-        page = '<title>拾影 dv365-downloader · 本地视频下载</title><script src="/static/app.js"></script>'
+        page = '<title>音视频下载 dv365-downloader · 本地视频下载</title><script src="/static/app.js"></script>'
         self.assertTrue(self.probe(config, directory, page))
         self.assertFalse(self.probe(config, directory, "<title>Another app</title>"))
         config["data_dir"] = str(directory / "other")
@@ -92,7 +92,7 @@ class InstanceRecognitionTests(unittest.TestCase):
         config = dict(download_dir=str(application.BASE_DIR / "downloads"), ffmpeg=True,
                       yt_dlp_version="2026.3.17", csrf_token="local-token")
         self.assertTrue(self.probe(config, application.BASE_DIR / ".data",
-                                  '<title>拾影 dv365-downloader · 本地视频下载</title><script src="/static/app.js"></script>'))
+                                  '<title>音视频下载 dv365-downloader · 本地视频下载</title><script src="/static/app.js"></script>'))
         self.assertFalse(self.probe(config, application.BASE_DIR / ".data", "<title>Another app</title>"))
 
     def test_invalid_json_and_unavailable_server_are_not_reused(self):
