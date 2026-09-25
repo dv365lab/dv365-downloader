@@ -6,6 +6,17 @@
 
 支持范围取决于 yt-dlp、目标网站及访问权限，并非所有网址都能下载。需要登录、受地域限制或带 DRM 的视频可能无法下载；请下载你有权保存的内容。
 
+## Linux 快速使用：双击启动
+
+在 Linux 文件管理器中打开项目文件夹，双击 **dv365-downloader.desktop**（可能显示为 **DV365 Downloader**）即可启动。
+
+如果项目中还没有该文件，先在项目目录运行一次 `python3 install_linux_shortcut.py` 生成图标。应用需要 Python 3.10 或更新版本，完整准备步骤见下方“Linux 双击启动”。
+
+1. 双击图标；如果文件管理器提示，选择“允许启动”或“标记为可执行”。启动器会打开终端并自动打开浏览器；首次运行需要联网安装 Python 依赖。
+2. 如果浏览器没有自动打开，在当前电脑访问 **http://127.0.0.1:8765**。
+3. 粘贴视频链接，选择画质或 MP3 音频，加入下载队列。文件默认保存在项目的 `downloads` 目录；合并音视频、导出 MP3 需要先安装 FFmpeg。
+4. 下载期间保持终端窗口打开。再次双击可重新打开已有页面；结束使用时，在终端窗口按 `Ctrl+C` 停止服务。
+
 ## 芯片验证日记｜把验证学明白、做扎实
 
 从学习中的疑问，到工作中的难题，与你一起交流芯片验证、积累实践经验。
@@ -17,6 +28,39 @@
 **知识星球：7833526**，欢迎加入！一年365天答疑，为您的工作和学习保驾护航。
 
 **全平台认准「芯片验证日记」**：自媒体各平台统一名称、统一 DV365 Logo，方便找到我们。
+
+## Linux 双击启动
+
+1. 安装 **Python 3.10 或更新版本**（包含 `venv` 和 `pip`）。合并音视频、导出 MP3 还需要 **FFmpeg**；YouTube 下载建议安装 **Node.js 22 或更新版本**。
+2. 首次使用，在项目目录运行一次以下命令，生成本机启动图标：
+
+   ```bash
+   python3 install_linux_shortcut.py
+   ```
+
+   生成图标的脚本可使用系统 Python 3.6 或更新版本；运行应用仍需要 Python 3.10 或更新版本。
+
+3. 在文件管理器中双击 **dv365-downloader.desktop**（可能显示为 **DV365 Downloader**）。如果出现提示，选择“允许启动”或“标记为可执行”。启动器会打开终端，首次运行时创建 `.venv`、安装依赖并自动打开浏览器。
+
+如果文件管理器把图标作为文本打开，请右键选择允许启动或作为程序运行；也可在项目目录运行 `bash start.sh` 启动。浏览器未自动打开时，手动访问 **http://127.0.0.1:8765**。
+
+下载期间请保留终端窗口，按 `Ctrl+C` 关闭服务。再次双击会打开正在运行的应用，不会中断下载。首次安装依赖需要联网。
+
+启动图标包含本机项目的绝对路径，不纳入 Git；可以复制到桌面使用。**移动项目文件夹后，请重新运行生成命令，并替换复制到桌面的旧图标。** 不要直接双击 `app.py` 或 `start.sh`，部分 Linux 文件管理器会将它们作为文本打开。
+
+### Linux 安装 FFmpeg
+
+YouTube 等网站可能只提供分离的视频和音频流，需要 **FFmpeg** 合并为一个带声音的视频文件；只安装 Python 依赖无法完成这一步。
+
+可以通过发行版的软件包管理器安装 FFmpeg，也可以从 [yt-dlp 的 FFmpeg 构建页面](https://github.com/yt-dlp/FFmpeg-Builds/releases) 下载适合当前架构的 Linux 压缩包。Rocky Linux x86_64 使用 `linux64-gpl` 构建；解压后，将 `bin` 目录中的 `ffmpeg` 和 `ffprobe` 放入 `~/.local/bin`，然后运行：
+
+```bash
+chmod +x "$HOME/.local/bin/ffmpeg" "$HOME/.local/bin/ffprobe"
+"$HOME/.local/bin/ffmpeg" -version
+"$HOME/.local/bin/ffprobe" -version
+```
+
+Linux 启动器会自动将 `~/.local/bin` 加入 PATH，无需管理员权限。安装后重新打开应用，在“下载设置”中确认 **FFmpeg 已就绪**，再点击失败任务的“重新下载”。
 
 ## macOS 一键启动
 
@@ -78,6 +122,16 @@
 
 ## 启动选项
 
+Linux：
+
+```bash
+# 更换端口，不自动打开浏览器
+./start.sh --port 8766 --no-browser
+
+# 自定义应用数据目录
+DV365_DOWNLOADER_DATA_DIR="$HOME/dv365-downloader-data" ./start.sh
+```
+
 macOS：
 
 ```bash
@@ -107,13 +161,15 @@ $env:DV365_DOWNLOADER_DATA_DIR = 'D:\dv365-downloader-data'
 
 设置 `DV365_DOWNLOADER_DATA_DIR` 后，任务记录保存在该目录的 `downloads.db`，下载文件默认保存在该目录下的 `downloads` 子目录，便于分开保存不同实例的数据。
 
-`start.command` 和 `start.bat` 会在首次运行、依赖缺失或 `requirements.txt` 变化时安装依赖，平时直接启动；不需要 Node 前端构建。
+`start.sh`、`start.command` 和 `start.bat` 会在首次运行、依赖缺失或 `requirements.txt` 变化时安装依赖，平时直接启动；不需要 Node 前端构建。
 
 ## 更新与排错
 
+如果出现 `Requested format is not available`，且“下载设置”显示 FFmpeg 未就绪，视频可能没有可直接下载的音画合一格式。请先按上方 Linux 安装说明安装 FFmpeg，再重新下载。FFmpeg 已就绪时仍出现该错误，再检查源视频提供的画质、访问权限和 yt-dlp 版本。
+
 网站规则会变化，下载失败时先更新 yt-dlp：
 
-macOS：
+Linux / macOS：
 
 ```bash
 ./.venv/bin/python -m pip install --upgrade 'yt-dlp[default]'
@@ -129,7 +185,7 @@ ffmpeg -version
 node --version
 ```
 
-如果找不到 FFmpeg，确认已安装、已加入 PATH，并重新打开启动窗口。端口被占用时用 `-Port` 指定其他端口。登录或访问权限相关错误需要先确认该视频在浏览器中可访问。
+如果找不到 FFmpeg，确认已安装、已加入 PATH，并重新打开启动窗口。端口被占用时，Linux/macOS 用 `--port`、Windows 用 `-Port` 指定其他端口（见“启动选项”）；手动访问时也要使用对应端口。登录或访问权限相关错误需要先确认该视频在浏览器中可访问。
 
 ## 开发与测试
 

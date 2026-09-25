@@ -13,6 +13,8 @@ import time
 import unittest
 from unittest.mock import patch
 
+from yt_dlp import YoutubeDL
+
 from downloader import DownloadManager, TaskError
 
 
@@ -36,6 +38,9 @@ if mode == "error":
     print("ordinary diagnostic", flush=True)
     print("ERROR: fixture download denied", flush=True)
     sys.exit(2)
+if mode == "format_error":
+    print("ERROR: [youtube] fixture: Requested format is not available. Use --list-formats for a list of available formats", flush=True)
+    sys.exit(1)
 if mode == "missing":
     print("fixture exited without creating media", flush=True)
     sys.exit(0)
@@ -134,6 +139,28 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.assertIsNone(result["filepath"])
         self.wait_status(next_task, "completed")
 
+    @patch("downloader.shutil.which", return_value=None)
+    def test_unavailable_video_format_explains_missing_ffmpeg(self, _which):
+        task = self.task("format_error")
+        result = self.wait_status(task, "failed")
+        self.assertIn("请安装 FFmpeg", result["error"])
+        self.assertIn("重新下载", result["error"])
+        self.assertIn("ERROR: [youtube] fixture: Requested format is not available", result["error"])
+        self.assertIsNone(result["filepath"])
+
+    @patch("downloader.shutil.which", return_value="fixture-ffmpeg")
+    def test_unavailable_format_with_ffmpeg_preserves_original_error(self, _which):
+        task = self.task("format_error")
+        result = self.wait_status(task, "failed")
+        self.assertEqual(result["error"], "ERROR: [youtube] fixture: Requested format is not available. "
+                         "Use --list-formats for a list of available formats")
+
+    @patch("downloader.shutil.which", return_value=None)
+    def test_unrelated_error_does_not_blame_missing_ffmpeg(self, _which):
+        task = self.task("error")
+        result = self.wait_status(task, "failed")
+        self.assertEqual(result["error"], "ERROR: fixture download denied")
+
     def test_zero_exit_without_media_is_a_failure(self):
         task = self.task("missing")
         result = self.wait_status(task, "failed")
@@ -222,6 +249,38 @@ class DownloadCommandTests(unittest.TestCase):
         selection = command[command.index("-f") + 1]
         self.assertNotIn("+", selection)
         self.assertIn("height<=?720", selection)
+
+    def select_fixture_formats(self, quality, formats):
+        task = self.manager.create_task("https://example.com/" + quality, quality)
+        command = self.manager.build_command(task)
+        selection = command[command.index("-f") + 1]
+        # Exercise yt-dlp's actual format filtering without fetching any URLs.
+        with YoutubeDL({"quiet": True, "format": selection}) as ydl:
+            return ydl.process_ie_result({"id": "fixture", "title": "Fixture", "formats": formats},
+                                         download=False)
+
+    @patch("downloader.shutil.which", return_value="fixture-tool")
+    def test_separate_video_and_audio_formats_are_selected_with_ffmpeg(self, _which):
+        for quality, height in (("best", 2160), ("1080", 1080), ("720", 720)):
+            with self.subTest(quality=quality):
+                formats = [{"format_id": "audio", "url": "https://example.com/audio.m4a",
+                            "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2"}]
+                formats += [{"format_id": str(resolution), "url": f"https://example.com/{resolution}.mp4",
+                             "ext": "mp4", "height": resolution, "vcodec": "avc1", "acodec": "none"}
+                            for resolution in (720, 1080, 2160)]
+                selected = self.select_fixture_formats(quality, formats)
+                self.assertEqual([item["format_id"] for item in selected["requested_formats"]],
+                                 [str(height), "audio"])
+
+    @patch("downloader.shutil.which", return_value=None)
+    def test_combined_video_format_still_downloads_without_ffmpeg(self, _which):
+        formats = [{"format_id": "combined", "url": "https://example.com/combined.mp4",
+                    "ext": "mp4", "height": 720, "vcodec": "avc1", "acodec": "mp4a.40.2"},
+                   {"format_id": "1080", "url": "https://example.com/1080.mp4",
+                    "ext": "mp4", "height": 1080, "vcodec": "avc1", "acodec": "none"}]
+        selected = self.select_fixture_formats("720", formats)
+        self.assertEqual(selected["format_id"], "combined")
+        self.assertNotIn("requested_formats", selected)
 
     @patch("downloader.shutil.which", return_value="fixture-ffmpeg")
     def test_audio_download_requests_mp3_conversion(self, _which):

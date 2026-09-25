@@ -287,6 +287,11 @@ class DownloadManager:
                 path = Path(final_path).resolve() if isinstance(final_path, str) else None
                 if returncode != 0 or path is None:
                     detail = next((line for line in reversed(tail) if line.startswith("ERROR:")), None)
+                    if (detail and "Requested format is not available" in detail
+                            and task["quality"] != "audio" and not shutil.which("ffmpeg")):
+                        detail = ("未找到 FFmpeg，当前只能下载自带音轨的视频格式。"
+                                  "请安装 FFmpeg 并重新启动应用，再点击“重新下载”，"
+                                  "以支持合并分离的音视频流。\n原始错误：" + detail)
                     raise TaskError(detail or ("\n".join(tail)[-1500:] if tail else "下载未生成文件，请检查链接是否受支持。"))
                 if not path.is_relative_to(Path(task["output_dir"]).resolve()) or not path.is_file():
                     raise TaskError("下载结束，但没有在目标目录找到文件。")

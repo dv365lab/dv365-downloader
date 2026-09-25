@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Finder runs .command files in Terminal, and the initial directory is not
-# guaranteed to be this project. Always resolve paths relative to this file.
+# guaranteed to be this project. Linux start.sh also uses this bootstrap.
+# Always resolve paths relative to this file.
 set -u
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)" || exit 1
@@ -44,7 +45,7 @@ if [ ! -x "$VENV_PYTHON" ]; then
     done
 
     if [ -z "$BOOTSTRAP_PYTHON" ]; then
-        fail '需要 Python 3.10 或更新版本。请先安装 Python 3，然后重新双击 start.command。'
+        fail '需要 Python 3.10 或更新版本。请先安装 Python 3，然后重新双击启动文件。'
     fi
 
     printf '正在创建本地 Python 环境...\n'

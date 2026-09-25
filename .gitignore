@@ -9,3 +9,5 @@ __pycache__/
 htmlcov/
 .DS_Store
 Thumbs.db
+# Generated Linux launcher contains the absolute path to this checkout.
+/dv365-downloader.desktop
