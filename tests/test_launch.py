@@ -21,7 +21,7 @@ class QuietHandler(WSGIRequestHandler):
 
 class RepeatedLaunchTests(unittest.TestCase):
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory(prefix="videodown-launch-")
+        self.temporary = tempfile.TemporaryDirectory(prefix="dv365-downloader-launch-")
         self.data_dir = Path(self.temporary.name)
         self.app = application.create_app(self.data_dir, start_worker=False)
         self.manager = self.app.config["MANAGER"]
@@ -43,7 +43,7 @@ class RepeatedLaunchTests(unittest.TestCase):
         self.manager.create_task("https://example.com/queued")
         before = self.manager.list_tasks()
         database_before = (self.data_dir / "downloads.db").read_bytes()
-        with patch.dict(os.environ, {"VIDEODOWN_DATA_DIR": str(self.data_dir)}), \
+        with patch.dict(os.environ, {"DV365_DOWNLOADER_DATA_DIR": str(self.data_dir)}), \
                 patch("sys.argv", ["app.py", "--port", str(self.port)]), \
                 patch("app.webbrowser.open", return_value=True) as browser, \
                 patch("waitress.create_server") as create_server, \
@@ -55,7 +55,7 @@ class RepeatedLaunchTests(unittest.TestCase):
         self.assertEqual((self.data_dir / "downloads.db").read_bytes(), database_before)
 
     def test_repeated_launch_respects_no_browser(self):
-        with patch.dict(os.environ, {"VIDEODOWN_DATA_DIR": str(self.data_dir)}), \
+        with patch.dict(os.environ, {"DV365_DOWNLOADER_DATA_DIR": str(self.data_dir)}), \
                 patch("sys.argv", ["app.py", "--port", str(self.port), "--no-browser"]), \
                 patch("app.webbrowser.open") as browser, \
                 contextlib.redirect_stdout(io.StringIO()):
@@ -72,16 +72,27 @@ class InstanceRecognitionTests(unittest.TestCase):
 
     def test_different_data_directory_is_not_reused(self):
         directory = application.BASE_DIR / ".data"
-        self.assertFalse(self.probe({"app_id": "videodown", "data_dir": str(directory / "other")}, directory))
+        self.assertFalse(self.probe({"app_id": "dv365-downloader", "data_dir": str(directory / "other")}, directory))
 
     def test_unrelated_server_is_not_reused(self):
         self.assertFalse(self.probe({"status": "ok"}, application.BASE_DIR / ".data"))
+
+    def test_previous_brand_instance_uses_directory_and_current_page_to_identify_itself(self):
+        directory = application.BASE_DIR / ".data"
+        config = dict(app_id="previous-release", data_dir=str(directory),
+                      download_dir=str(application.BASE_DIR / "downloads"), ffmpeg=True,
+                      yt_dlp_version="2026.3.17", csrf_token="local-token")
+        page = '<title>拾影 dv365-downloader · 本地视频下载</title><script src="/static/app.js"></script>'
+        self.assertTrue(self.probe(config, directory, page))
+        self.assertFalse(self.probe(config, directory, "<title>Another app</title>"))
+        config["data_dir"] = str(directory / "other")
+        self.assertFalse(self.probe(config, directory, page))
 
     def test_legacy_running_version_can_be_reused_without_restart(self):
         config = dict(download_dir=str(application.BASE_DIR / "downloads"), ffmpeg=True,
                       yt_dlp_version="2026.3.17", csrf_token="local-token")
         self.assertTrue(self.probe(config, application.BASE_DIR / ".data",
-                                  '<title>拾影 VideoDown · 本地视频下载</title><script src="/static/app.js"></script>'))
+                                  '<title>拾影 dv365-downloader · 本地视频下载</title><script src="/static/app.js"></script>'))
         self.assertFalse(self.probe(config, application.BASE_DIR / ".data", "<title>Another app</title>"))
 
     def test_invalid_json_and_unavailable_server_are_not_reused(self):

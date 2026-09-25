@@ -19,12 +19,12 @@ class QuietHandler(SimpleHTTPRequestHandler):
         pass
 
 
-@unittest.skipUnless(os.environ.get("VIDEODOWN_INTEGRATION") == "1", "Set VIDEODOWN_INTEGRATION=1 for real yt-dlp/FFmpeg smoke test")
+@unittest.skipUnless(os.environ.get("DV365_DOWNLOADER_INTEGRATION") == "1", "Set DV365_DOWNLOADER_INTEGRATION=1 for real yt-dlp/FFmpeg smoke test")
 class RealDownloadTests(unittest.TestCase):
     def test_video_download_and_mp3_conversion(self):
         self.assertIsNotNone(shutil.which("ffmpeg"), "FFmpeg is required for this integration test")
         self.assertIsNotNone(shutil.which("ffprobe"))
-        with tempfile.TemporaryDirectory(prefix="videodown-real-") as temp:
+        with tempfile.TemporaryDirectory(prefix="dv365-downloader-real-") as temp:
             root = Path(temp)
             source = root / "source"
             source.mkdir()

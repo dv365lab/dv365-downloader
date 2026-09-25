@@ -9,7 +9,7 @@ from app import create_app
 
 class StorageRecoveryTests(unittest.TestCase):
     def setUp(self):
-        self.directory = tempfile.TemporaryDirectory(prefix="videodown-storage-test-")
+        self.directory = tempfile.TemporaryDirectory(prefix="dv365-downloader-storage-test-")
         self.addCleanup(self.directory.cleanup)
         self.data_dir = Path(self.directory.name) / "data"
 

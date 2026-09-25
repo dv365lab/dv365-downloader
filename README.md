@@ -1,4 +1,4 @@
-# VideoDown
+# dv365-downloader
 
 基于 **yt-dlp** 的本机视频下载器。浏览器打开 Web 界面，粘贴视频链接，视频保存到当前电脑。
 
@@ -45,11 +45,11 @@
 .\.venv\Scripts\python.exe app.py --port 8765 --no-browser
 
 # 自定义应用数据目录
-$env:VIDEODOWN_DATA_DIR = 'D:\VideoDownData'
+$env:DV365_DOWNLOADER_DATA_DIR = 'D:\dv365-downloader-data'
 .\start.bat
 ```
 
-设置 `VIDEODOWN_DATA_DIR` 后，任务记录保存在该目录的 `downloads.db`，下载文件默认保存在该目录下的 `downloads` 子目录，便于分开保存不同实例的数据。
+设置 `DV365_DOWNLOADER_DATA_DIR` 后，任务记录保存在该目录的 `downloads.db`，下载文件默认保存在该目录下的 `downloads` 子目录，便于分开保存不同实例的数据。
 
 `start.bat` 在首次运行、依赖缺失或 `requirements.txt` 变化时安装依赖，平时直接启动；不需要 Node 前端构建。
 
@@ -80,7 +80,7 @@ python -m venv .venv
 下面的集成测试会用 FFmpeg 生成两秒的测试视频，通过本机 HTTP 服务交给真实 yt-dlp 下载，再验证 MP4 和 MP3 文件可读，不需要外网流量：
 
 ```powershell
-$env:VIDEODOWN_INTEGRATION = '1'
+$env:DV365_DOWNLOADER_INTEGRATION = '1'
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 

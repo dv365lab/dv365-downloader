@@ -65,7 +65,7 @@ emit("FILE", str(path))
 
 class WorkerIntegrationTests(unittest.TestCase):
     def setUp(self):
-        self.directory = tempfile.TemporaryDirectory(prefix="videodown-worker-")
+        self.directory = tempfile.TemporaryDirectory(prefix="dv365-downloader-worker-")
         self.root = Path(self.directory.name)
         self.script = self.root / "child.py"
         self.script.write_text(CHILD_SCRIPT, encoding="utf-8")
@@ -186,7 +186,7 @@ class WorkerIntegrationTests(unittest.TestCase):
 
 class DownloadCommandTests(unittest.TestCase):
     def setUp(self):
-        self.directory = tempfile.TemporaryDirectory(prefix="videodown-command-")
+        self.directory = tempfile.TemporaryDirectory(prefix="dv365-downloader-command-")
         self.manager = DownloadManager(Path(self.directory.name) / "data", start_worker=False)
 
     def tearDown(self):

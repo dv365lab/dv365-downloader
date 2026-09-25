@@ -14,7 +14,7 @@ from app import create_app
 
 class AppContractTests(unittest.TestCase):
     def setUp(self):
-        self.directory = tempfile.TemporaryDirectory(prefix="videodown-test-")
+        self.directory = tempfile.TemporaryDirectory(prefix="dv365-downloader-test-")
         self.data_dir = Path(self.directory.name) / "data"
         self.app = create_app(data_dir=self.data_dir, start_worker=False)
         self.app.config.update(TESTING=True)

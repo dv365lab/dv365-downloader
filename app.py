@@ -1,4 +1,4 @@
-"""VideoDown: a loopback-only web interface for yt-dlp."""
+"""dv365-downloader: a loopback-only web interface for yt-dlp."""
 from __future__ import annotations
 
 import argparse
@@ -36,20 +36,26 @@ def running_instance(address: str, data_dir: Path) -> bool:
             config = json.loads(response.read(65536))
         if not isinstance(config, dict):
             return False
-        if config.get("app_id") == "videodown":
+        if config.get("app_id") == "dv365-downloader":
             directory = config.get("data_dir")
             return isinstance(directory, str) and Path(directory).resolve() == data_dir.resolve()
-        # Compatibility with the original version still running in the background.
-        # Its default storage path and page identify it without requiring a restart.
-        if ("app_id" in config or data_dir.resolve() != (BASE_DIR / ".data").resolve()
-                or config.get("download_dir") != str(BASE_DIR / "downloads")
+        # A previous release may still be running with a different brand identifier.
+        # Match its data directory and updated page before reusing that instance.
+        if "data_dir" in config:
+            directory = config["data_dir"]
+            if not isinstance(directory, str) or Path(directory).resolve() != data_dir.resolve():
+                return False
+        elif ("app_id" in config or data_dir.resolve() != (BASE_DIR / ".data").resolve()
+              or config.get("download_dir") != str(BASE_DIR / "downloads")):
+            return False
+        if (not isinstance(config.get("download_dir"), str)
                 or not isinstance(config.get("ffmpeg"), bool)
                 or not isinstance(config.get("yt_dlp_version"), str)
                 or not isinstance(config.get("csrf_token"), str)):
             return False
         with opener.open(address + "/", timeout=0.8) as response:
             page = response.read(65536).decode("utf-8")
-        return "<title>拾影 VideoDown · 本地视频下载</title>" in page and '/static/app.js' in page
+        return "<title>拾影 dv365-downloader · 本地视频下载</title>" in page and '/static/app.js' in page
     except (OSError, ValueError, UnicodeError):
         return False
 
@@ -57,7 +63,7 @@ def running_instance(address: str, data_dir: Path) -> bool:
 def create_app(data_dir: Path | None = None, start_worker: bool = True):
     app = Flask(__name__, static_folder=str(BASE_DIR / "static"), static_url_path="/static")
     app.config["MAX_CONTENT_LENGTH"] = 16384
-    custom_dir = data_dir or os.environ.get("VIDEODOWN_DATA_DIR")
+    custom_dir = data_dir or os.environ.get("DV365_DOWNLOADER_DATA_DIR")
     manager = DownloadManager(Path(custom_dir) if custom_dir else BASE_DIR / ".data",
                               start_worker=start_worker,
                               download_dir=None if custom_dir else BASE_DIR / "downloads")
@@ -70,7 +76,7 @@ def create_app(data_dir: Path | None = None, start_worker: bool = True):
 
     def config():
         return dict(download_dir=str(manager.download_dir), ffmpeg=bool(shutil.which("ffmpeg")),
-                    yt_dlp_version=version, csrf_token=token, app_id="videodown",
+                    yt_dlp_version=version, csrf_token=token, app_id="dv365-downloader",
                     data_dir=str(manager.data_dir))
 
     def payload():
@@ -172,7 +178,7 @@ def create_app(data_dir: Path | None = None, start_worker: bool = True):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="拾影 VideoDown · 本地视频下载器")
+    parser = argparse.ArgumentParser(description="拾影 dv365-downloader · 本地视频下载器")
     parser.add_argument("--port", type=int, default=8765, help="本机端口（默认 8765）")
     parser.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
     args = parser.parse_args()
@@ -185,19 +191,19 @@ def main():
         app = create_app()
     except TaskError as exc:
         if exc.status == 409:
-            data_dir = Path(os.environ.get("VIDEODOWN_DATA_DIR") or BASE_DIR / ".data")
+            data_dir = Path(os.environ.get("DV365_DOWNLOADER_DATA_DIR") or BASE_DIR / ".data")
             # Another launcher may have acquired the lock just before binding HTTP.
             for attempt in range(4):
                 if running_instance(address, data_dir):
-                    print(f"VideoDown is already running: {address}", flush=True)
+                    print(f"dv365-downloader is already running: {address}", flush=True)
                     if not args.no_browser:
                         webbrowser.open(address)
                     return
                 if attempt < 3:
                     time.sleep(0.15)
-        parser.exit(1, f"无法启动 VideoDown：{exc}\n")
+        parser.exit(1, f"无法启动 dv365-downloader：{exc}\n")
     except OSError as exc:
-        parser.exit(1, f"无法启动 VideoDown：{exc}\n")
+        parser.exit(1, f"无法启动 dv365-downloader：{exc}\n")
     manager = app.config["MANAGER"]
     atexit.register(manager.shutdown)
     try:
@@ -205,7 +211,7 @@ def main():
     except OSError:
         manager.shutdown()
         parser.exit(1, f"端口 {args.port} 已被占用或不可用，请使用 --port 指定其他端口。\n")
-    print(f"\n  VideoDown: {address}\n  Downloads: {manager.download_dir}\n  Ctrl+C to stop.\n", flush=True)
+    print(f"\n  dv365-downloader: {address}\n  Downloads: {manager.download_dir}\n  Ctrl+C to stop.\n", flush=True)
     if not args.no_browser:
         threading.Timer(0.6, lambda: webbrowser.open(address)).start()
     try:

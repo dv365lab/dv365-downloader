@@ -53,11 +53,11 @@ try {
 
     $appArgs = @((Join-Path $PSScriptRoot 'app.py'), '--port', $Port.ToString())
     if ($NoBrowser) { $appArgs += '--no-browser' }
-    Write-Host "Starting VideoDown at http://127.0.0.1:$Port"
+    Write-Host "Starting dv365-downloader at http://127.0.0.1:$Port"
     Write-Host 'Keep this window open while downloading. Press Ctrl+C to stop.'
     & $venvPython @appArgs
     exit $LASTEXITCODE
 } catch {
-    Write-Host "VideoDown: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "dv365-downloader: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
 }
