@@ -18,6 +18,33 @@
 
 **全平台认准「芯片验证日记」**：自媒体各平台统一名称、统一 DV365 Logo，方便找到我们。
 
+## macOS 一键启动
+
+1. 安装 **Python 3.10 或更新版本**。如果已安装 [Homebrew](https://brew.sh/)，可在终端运行：
+
+   ```bash
+   brew install python
+   ```
+
+2. 安装 **FFmpeg**，用于合并视频和音频、导出 MP3：
+
+   ```bash
+   brew install ffmpeg
+   ```
+
+3. 如需下载 YouTube，建议安装 **Node.js 22 或更新版本**，用于 yt-dlp 的 JavaScript 挑战处理：
+
+   ```bash
+   brew install node
+   ```
+
+4. 在 Finder 中双击 **start.command**。首次运行会创建 `.venv`、安装依赖并打开浏览器；之后访问 **http://127.0.0.1:8765** 即可。
+
+下载期间请保留终端窗口。按 `Control+C` 关闭服务；下次运行仍可查看历史记录。
+如果应用已经运行，再次双击 `start.command` 会打开现有页面并正常退出，不会中断下载或启动重复服务。
+
+如果 macOS 首次打开时显示安全提示，请在 Finder 中按住 `Control` 点击 `start.command`，选择“打开”，确认后即可运行。如果文件因传输方式丢失了执行权限，可在项目目录运行 `chmod +x start.command` 修复。
+
 ## Windows 启动
 
 1. 安装 **Python 3.10 或更新版本**，安装时勾选 **Add Python to PATH**。
@@ -51,6 +78,21 @@
 
 ## 启动选项
 
+macOS：
+
+```bash
+# 更换端口，不自动打开浏览器
+./start.command --port 8766 --no-browser
+
+# 已安装依赖时直接启动
+./.venv/bin/python app.py --port 8765 --no-browser
+
+# 自定义应用数据目录
+DV365_DOWNLOADER_DATA_DIR="$HOME/dv365-downloader-data" ./start.command
+```
+
+Windows：
+
 ```powershell
 # 更换端口，不自动打开浏览器
 .\start.bat -Port 8766 -NoBrowser
@@ -65,11 +107,21 @@ $env:DV365_DOWNLOADER_DATA_DIR = 'D:\dv365-downloader-data'
 
 设置 `DV365_DOWNLOADER_DATA_DIR` 后，任务记录保存在该目录的 `downloads.db`，下载文件默认保存在该目录下的 `downloads` 子目录，便于分开保存不同实例的数据。
 
-`start.bat` 在首次运行、依赖缺失或 `requirements.txt` 变化时安装依赖，平时直接启动；不需要 Node 前端构建。
+`start.command` 和 `start.bat` 会在首次运行、依赖缺失或 `requirements.txt` 变化时安装依赖，平时直接启动；不需要 Node 前端构建。
 
 ## 更新与排错
 
 网站规则会变化，下载失败时先更新 yt-dlp：
+
+macOS：
+
+```bash
+./.venv/bin/python -m pip install --upgrade 'yt-dlp[default]'
+ffmpeg -version
+node --version
+```
+
+Windows：
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install --upgrade 'yt-dlp[default]'
@@ -82,6 +134,16 @@ node --version
 ## 开发与测试
 
 后端为 Python / Flask，使用 Waitress 提供本机 HTTP 服务；前端为原生 HTML、CSS、JavaScript。
+
+macOS：
+
+```bash
+python3 -m venv .venv
+./.venv/bin/python -m pip install -r requirements-dev.txt
+./.venv/bin/python -m unittest discover -s tests -v
+```
+
+Windows：
 
 ```powershell
 python -m venv .venv
