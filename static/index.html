@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f6f2">
+  <meta name="description" content="拾影 VideoDown — 通过 yt-dlp 将视频保存到你的电脑。">
+  <title>拾影 VideoDown · 本地视频下载</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script defer src="/static/app.js"></script>
+</head>
+<body>
+  <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M5 16v4h14v-4"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 4.2 2.8 17a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4m0 3v.1"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7V5a1 1 0 0 1 1-1h5l2 3h9a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Z"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M9.7 3h4.6l.6 2.5 2 .9 2.4-.7 2.3 4-1.8 1.8v2.2l1.8 1.8-2.3 4-2.4-.7-2 .9-.6 2.3H9.7l-.6-2.3-2-.9-2.4.7-2.3-4 1.8-1.8v-2.2L2.4 9.7l2.3-4 2.4.7 2-.9.6-2.5Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="m10 13 4-4m-6 7-1 1a4.2 4.2 0 0 1-6-6l5-5a4.2 4.2 0 0 1 6 0m0 11a4.2 4.2 0 0 0 6 0l5-5a4.2 4.2 0 0 0-6-6l-1 1" transform="translate(1 1) scale(.92)"/></symbol>
+    <symbol id="i-clipboard" viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M8 5H5v16h14V5h-3M8 11h8m-8 4h5"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="m9 5 11 7-11 7V5Z"/></symbol>
+    <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13M9 9l11-2"/><ellipse cx="6" cy="18" rx="3" ry="3"/><ellipse cx="17" cy="16" rx="3" ry="3"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+    <symbol id="i-retry" viewBox="0 0 24 24"><path d="M3 10a9 9 0 1 1 1 7M3 3v7h7"/></symbol>
+    <symbol id="i-arrow-up-right" viewBox="0 0 24 24"><path d="M6 18 18 6M6 6h12v12"/></symbol>
+    <symbol id="i-computer" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 11 3 3 5-5"/></symbol>
+  </svg>
+
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="主导航">
+      <a class="brand" href="/" aria-label="拾影首页">
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 40 40"><path d="M9 9h23v23H9z" fill="none" stroke="currentColor" stroke-width="2.5" transform="rotate(-8 20 20)"/><path d="M7 7h23v23H7z" fill="currentColor"/><path d="m16 13 10 6-10 6z" fill="#fff"/></svg></span>
+        <span class="brand-type">拾影<span>VIDEODOWN</span></span>
+      </a>
+      <div class="nav-label">我的工作台</div>
+      <nav class="navigation" aria-label="下载任务导航">
+        <button class="nav-item is-active" type="button" data-nav-filter="all" aria-current="page" aria-label="下载工作台"><svg class="icon"><use href="#i-grid"/></svg><span>下载工作台</span><span class="nav-count" id="nav-all-count">0</span></button>
+        <button class="nav-item" type="button" data-nav-filter="completed"><svg class="icon"><use href="#i-check-circle"/></svg><span>已完成</span><span class="nav-count" id="nav-completed-count">0</span></button>
+        <button class="nav-item" type="button" data-nav-filter="failed"><svg class="icon"><use href="#i-alert"/></svg><span>需要关注</span><span class="nav-count" id="nav-failed-count">0</span></button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="local-note"><span class="local-note-icon"><svg class="icon"><use href="#i-computer"/></svg></span><p>留在你的电脑<span>本地运行 · 本地存储</span></p><span class="small-dot"></span></div>
+        <div class="sidebar-footer"><span>POWERED BY <b>yt-dlp</b></span><span class="sidebar-footer-dot">·</span><span>为收藏而生</span></div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="page-header">
+        <div><div class="eyebrow"><span class="eyebrow-line"></span>YOUR LOCAL VIDEO SPACE</div><h1>好视频，值得留下。</h1><p class="page-description">粘贴一个链接，把喜欢的视频收藏到本地。</p></div>
+        <div class="header-actions"><button class="button button-outline" id="open-folder" type="button" aria-label="打开下载目录"><svg class="icon"><use href="#i-folder"/></svg><span>打开下载目录</span></button><button class="icon-button settings-button" id="open-settings" type="button" aria-label="打开设置" title="设置"><svg class="icon"><use href="#i-settings"/></svg></button></div>
+      </header>
+
+      <section class="download-card" aria-labelledby="download-heading">
+        <div class="card-topline"><div class="card-title"><span class="section-number">01 /</span><h2 id="download-heading">开始一次新下载</h2></div><span class="local-badge"><span class="small-dot"></span>本地下载</span></div>
+        <form id="download-form">
+          <label class="sr-only" for="video-url">视频网址</label>
+          <div class="url-field"><svg class="icon link-icon" aria-hidden="true"><use href="#i-link"/></svg><input id="video-url" name="url" type="url" placeholder="粘贴视频链接，例如 https://www.bilibili.com/video/…" autocomplete="off" spellcheck="false" required aria-describedby="url-help form-message"><button class="paste-button" id="paste-url" type="button" aria-label="粘贴视频链接"><svg class="icon"><use href="#i-clipboard"/></svg><span>粘贴</span></button></div>
+          <div class="download-options"><fieldset class="quality-options"><legend>下载质量</legend><div class="quality-segments"><label><input type="radio" name="quality" value="best" checked><span>最佳画质</span></label><label><input type="radio" name="quality" value="1080"><span>1080p</span></label><label><input type="radio" name="quality" value="720"><span>720p</span></label><label><input type="radio" name="quality" value="audio"><span><svg class="icon"><use href="#i-music"/></svg>仅音频</span></label></div></fieldset><button class="button button-primary download-button" id="start-download" type="submit" disabled><svg class="icon"><use href="#i-arrow-down"/></svg><span>开始下载</span><kbd>↵</kbd></button></div>
+          <p class="form-message" id="form-message" role="alert" hidden></p>
+        </form>
+        <div class="card-footnote" id="url-help"><span class="supported-copy"><svg class="icon"><use href="#i-shield"/></svg>支持 yt-dlp 兼容站点，实际可用性取决于站点限制</span><span class="single-video-note">每次下载一个视频</span></div>
+      </section>
+
+      <section class="stats-grid" aria-label="下载概览">
+        <div class="stat-card"><span class="stat-icon stat-total"><svg class="icon"><use href="#i-grid"/></svg></span><div class="stat-text"><span>全部任务</span><strong id="count-all">0</strong></div><span class="stat-label">ALL</span></div>
+        <div class="stat-card"><span class="stat-icon stat-active"><svg class="icon"><use href="#i-arrow-down"/></svg></span><div class="stat-text"><span>正在进行</span><strong id="count-active">0</strong></div><span class="stat-label">ACTIVE</span></div>
+        <div class="stat-card"><span class="stat-icon stat-completed"><svg class="icon"><use href="#i-check-circle"/></svg></span><div class="stat-text"><span>已完成</span><strong id="count-completed">0</strong></div><span class="stat-label">SAVED</span></div>
+      </section>
+
+      <section class="queue-section" aria-labelledby="queue-heading">
+        <div class="queue-header"><div class="queue-title"><h2 id="queue-heading">下载列表</h2><span class="queue-total" id="queue-total">0 个任务</span></div><span class="connection-status" id="connection-status" role="status"><span class="small-dot"></span><span>正在连接</span></span></div>
+        <div class="queue-toolbar"><div class="filter-tabs" role="group" aria-label="筛选下载任务"><button class="filter-tab is-active" type="button" data-filter="all" aria-pressed="true">全部<span id="filter-all-count">0</span></button><button class="filter-tab" type="button" data-filter="active" aria-pressed="false">进行中<span id="filter-active-count">0</span></button><button class="filter-tab" type="button" data-filter="completed" aria-pressed="false">已完成<span id="filter-completed-count">0</span></button><button class="filter-tab" type="button" data-filter="failed" aria-pressed="false">未成功<span id="filter-failed-count">0</span></button></div><span class="queue-order">最近添加优先</span></div>
+        <div class="task-list" id="task-list" aria-label="下载任务"></div>
+        <div class="empty-state" id="empty-state"><div class="empty-illustration" aria-hidden="true"><span class="empty-orbit orbit-one"></span><span class="empty-orbit orbit-two"></span><span class="empty-spark spark-one">+</span><span class="empty-spark spark-two">+</span><div class="empty-back-card"></div><div class="empty-video-card"><span class="empty-video-dot"></span><svg class="icon"><use href="#i-play"/></svg><span class="empty-video-line"></span></div><span class="empty-download"><svg class="icon"><use href="#i-arrow-down"/></svg></span></div><h3 id="empty-title">你的收藏，从一个链接开始</h3><p id="empty-description">在上方粘贴视频网址，下载进度会显示在这里。</p><button class="empty-action" type="button" id="focus-url">添加第一个视频<svg class="icon"><use href="#i-arrow-up-right"/></svg></button></div>
+      </section>
+
+      <footer class="page-footer"><span class="storage-summary"><svg class="icon"><use href="#i-folder"/></svg><span>保存至</span><button class="storage-path" id="storage-path" type="button" title="修改保存位置">正在读取…</button></span><span class="footer-note">珍藏所爱，也尊重创作。</span></footer>
+    </main>
+  </div>
+
+  <dialog class="settings-dialog" id="settings-dialog" aria-labelledby="settings-title"><form id="settings-form"><div class="dialog-header"><div><span class="eyebrow">MAKE IT YOURS</span><h2 id="settings-title">下载设置</h2></div><button class="icon-button" id="close-settings" type="button" aria-label="关闭设置"><svg class="icon"><use href="#i-x"/></svg></button></div><label class="field-label" for="download-directory">本机保存目录</label><input class="directory-input" id="download-directory" name="download_dir" type="text" autocomplete="off" spellcheck="false" required placeholder="例如 F:\Videos"><p class="field-help">输入这台电脑上的文件夹路径。新任务将使用此目录，已有任务保留原位置。</p><div class="engine-status"><div><span>下载引擎</span><strong id="engine-version">yt-dlp</strong></div><div><span>音视频处理</span><strong id="ffmpeg-status">检查中</strong></div></div><p class="settings-message form-message" id="settings-message" role="alert" hidden></p><div class="dialog-actions"><button class="button button-outline" id="cancel-settings" type="button">取消</button><button class="button button-primary" id="save-settings" type="submit">保存设置</button></div></form></dialog>
+  <div class="toast-region" id="toast-region" role="status" aria-live="polite" aria-atomic="true"></div>
+</body>
+</html>
