@@ -13,14 +13,19 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import uuid
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
+import pdf_collect
+
 ACTIVE = {"queued", "extracting", "downloading", "processing"}
 QUALITIES = {"best", "1080", "720", "audio"}
+KINDS = {"video", "pdf"}
+PROGRESS_INTERVAL = 0.5
 
 
 class TaskError(ValueError):
@@ -53,6 +58,13 @@ def validate_url(value):
 
 def numeric(value):
     return value if isinstance(value, (int, float)) and math.isfinite(value) else None
+
+
+def _folder_slug(url):
+    """A readable, filesystem-safe folder prefix for a PDF collection task."""
+    host = urlsplit(url).hostname or "page"
+    slug = re.sub(r"[^0-9A-Za-z._-]+", "-", host).strip("-")[:40]
+    return slug or "page"
 
 
 def open_directory(path: Path):
@@ -97,6 +109,7 @@ class DownloadManager:
         self.pending = queue.Queue()
         self.stopping = threading.Event()
         self.processes = {}
+        self.cancel_events = {}
         self.worker = None
         self.closed = False
         for task in self.tasks.values():
@@ -117,7 +130,17 @@ class DownloadManager:
 
     def list_tasks(self):
         with self.lock:
-            return [dict(t) for t in sorted(self.tasks.values(), key=lambda t: t["created_at"], reverse=True)]
+            return [self._public_task(t)
+                    for t in sorted(self.tasks.values(), key=lambda t: t["created_at"], reverse=True)]
+
+    @staticmethod
+    def _public_task(task):
+        """Trim a task for the UI: finished files are only counted, not listed."""
+        view = dict(task)
+        if task.get("kind") == "pdf":
+            view["files"] = [dict(item) for item in task.get("files", [])
+                             if item.get("status") != "completed"]
+        return view
 
     def get_task(self, task_id):
         with self.lock:
@@ -133,22 +156,35 @@ class DownloadManager:
             self.tasks[task_id] = task
             return dict(task)
 
-    def create_task(self, url, quality="best"):
+    def create_task(self, url, quality="best", kind="video", include_subpages=False):
         url = validate_url(url)
-        if not isinstance(quality, str) or quality not in QUALITIES:
-            raise TaskError("请选择有效的下载画质。")
-        if quality == "audio" and not shutil.which("ffmpeg"):
-            raise TaskError("下载 MP3 需要 FFmpeg，请先安装并重新启动应用。")
+        if not isinstance(kind, str) or kind not in KINDS:
+            raise TaskError("请选择有效的下载类型。")
+        if kind == "pdf":
+            if include_subpages not in (True, False):
+                raise TaskError("子页面选项无效。")
+            quality = "pdf"
+        else:
+            include_subpages = False
+            if not isinstance(quality, str) or quality not in QUALITIES:
+                raise TaskError("请选择有效的下载画质。")
+            if quality == "audio" and not shutil.which("ffmpeg"):
+                raise TaskError("下载 MP3 需要 FFmpeg，请先安装并重新启动应用。")
         with self.lock:
-            if any(t["url"] == url and t["status"] in ACTIVE for t in self.tasks.values()):
+            if any(t["url"] == url and t.get("kind", "video") == kind and t["status"] in ACTIVE
+                   for t in self.tasks.values()):
                 raise TaskError("这个网址已经在下载队列中。", 409)
             task_id = uuid.uuid4().hex
             stamp = now()
-            task = dict(id=task_id, url=url, title=urlsplit(url).hostname, quality=quality,
+            folder = f"{_folder_slug(url)}-{task_id[:8]}" if kind == "pdf" else task_id[:12]
+            task = dict(id=task_id, kind=kind, url=url, title=urlsplit(url).hostname, quality=quality,
                         status="queued", progress=None, downloaded_bytes=0, total_bytes=None,
                         speed=None, eta=None, error=None, filename=None, filepath=None,
-                        output_dir=str(self.download_dir / task_id[:12]),
+                        output_dir=str(self.download_dir / folder),
                         created_at=stamp, updated_at=stamp, thumbnail=None)
+            if kind == "pdf":
+                task.update(include_subpages=include_subpages, files=[], file_count=0,
+                            completed_count=0, failed_count=0, pages_scanned=0)
             self._save(task)
             self.tasks[task_id] = task
             self.pending.put(task_id)
@@ -178,6 +214,9 @@ class DownloadManager:
             if task["status"] not in ACTIVE:
                 raise TaskError("只有正在排队或下载的任务可以取消。", 409)
             result = self.update_task(task_id, status="cancelled", speed=None, eta=None, error=None)
+            event = self.cancel_events.get(task_id)
+            if event:
+                event.set()
             proc = self.processes.get(task_id)
             if proc:
                 self._terminate(proc)
@@ -186,16 +225,17 @@ class DownloadManager:
     def retry_task(self, task_id):
         with self.lock:
             task = self.get_task(task_id)
-            if task["status"] not in {"failed", "cancelled"}:
+            partial = task.get("kind") == "pdf" and task.get("failed_count")
+            if task["status"] not in {"failed", "cancelled"} and not partial:
                 raise TaskError("只有失败或取消的任务可以重试。", 409)
             if task_id in self.processes:
                 raise TaskError("正在结束上一次下载，请稍后重试。", 409)
             if any(t["id"] != task_id and t["url"] == task["url"] and t["status"] in ACTIVE
                    for t in self.tasks.values()):
                 raise TaskError("这个网址已经在下载队列中。", 409)
-            result = self.update_task(task_id, status="queued", error=None, progress=None,
-                                      speed=None, eta=None, downloaded_bytes=0, total_bytes=None,
-                                      filename=None, filepath=None)
+            fields = dict(status="queued", error=None, progress=None, speed=None, eta=None,
+                          downloaded_bytes=0, total_bytes=None, filename=None, filepath=None)
+            result = self.update_task(task_id, **fields)
             self.pending.put(task_id)
             return result
 
@@ -243,6 +283,14 @@ class DownloadManager:
                 self.pending.task_done()
 
     def _download(self, task_id):
+        with self.lock:
+            task = self.get_task(task_id)
+        if task.get("kind") == "pdf":
+            self._collect_pdfs(task_id)
+        else:
+            self._download_media(task_id)
+
+    def _download_media(self, task_id):
         proc = None
         tail = deque(maxlen=12)
         final_path = None
@@ -311,6 +359,137 @@ class DownloadManager:
             with self.lock:
                 self.processes.pop(task_id, None)
 
+    def _fail_task(self, task_id, message):
+        with self.lock:
+            if self.tasks[task_id]["status"] == "cancelled" or self.stopping.is_set():
+                return
+            self.update_task(task_id, status="failed", error=str(message)[-2000:], speed=None, eta=None)
+
+    def _collect_pdfs(self, task_id):
+        event = threading.Event()
+        try:
+            with self.lock:
+                task = self.get_task(task_id)
+                if task["status"] != "queued" or self.stopping.is_set():
+                    return
+                self.cancel_events[task_id] = event
+                output_dir = Path(task["output_dir"])
+                output_dir.mkdir(parents=True, exist_ok=True)
+                self.update_task(task_id, status="extracting", progress=None, speed=None, eta=None, error=None)
+            self._run_pdf_collection(task_id, task, output_dir, event)
+        except pdf_collect.Cancelled:
+            return
+        except TaskError as exc:
+            self._fail_task(task_id, str(exc))
+        except pdf_collect.FetchError as exc:
+            self._fail_task(task_id, f"无法读取网页：{exc}")
+        except Exception as exc:
+            self._fail_task(task_id, f"抓取失败：{exc}")
+        finally:
+            with self.lock:
+                self.cancel_events.pop(task_id, None)
+
+    def _run_pdf_collection(self, task_id, task, output_dir, event):
+        def stop():
+            return event.is_set() or self.stopping.is_set()
+
+        url = task["url"]
+        allow_private = pdf_collect.is_private_host(urlsplit(url).hostname)
+        title, links, scanned = pdf_collect.discover(
+            url, include_subpages=bool(task.get("include_subpages")), should_stop=stop)
+        if stop():
+            raise pdf_collect.Cancelled
+        if not links:
+            raise TaskError("这个网页里没有找到 PDF 链接，请确认地址指向一个包含 PDF 的页面。")
+
+        # Anything already on disk is kept, so a retry only fetches the gaps.
+        # A partial download never survives (files are renamed into place), which
+        # makes the presence of a named PDF a safe completion signal.
+        previous = {item.get("url"): item for item in task.get("files", [])}
+        files, taken = [], set()
+        for link in links:
+            known = previous.get(link) or {}
+            name = known.get("name") or pdf_collect.filename_for(link)
+            existing = output_dir / name
+            if name not in taken and existing.is_file():
+                files.append(dict(url=link, name=name, status="completed",
+                                  size=existing.stat().st_size, error=None))
+                taken.add(name)
+            else:
+                files.append(dict(url=link, name=pdf_collect.filename_for(link),
+                                  status="pending", size=None, error=None))
+        total = len(files)
+        downloaded = sum(item.get("size") or 0 for item in files if item["status"] == "completed")
+        completed = sum(1 for item in files if item["status"] == "completed")
+        failed = 0
+        started = time.monotonic()
+        last_push = [0.0]
+        with self.lock:
+            self.update_task(task_id, status="downloading", title=title or task["title"],
+                             file_count=total, completed_count=completed, failed_count=0,
+                             files=[dict(item) for item in files], pages_scanned=scanned,
+                             progress=completed / total * 100 if completed else 0,
+                             downloaded_bytes=downloaded, total_bytes=None,
+                             speed=None, eta=None, error=None)
+
+        def push(current_bytes, partial):
+            stamp = time.monotonic()
+            if partial and stamp - last_push[0] < PROGRESS_INTERVAL:
+                return
+            last_push[0] = stamp
+            elapsed = max(0.001, stamp - started)
+            finished = completed + failed
+            self.update_task(task_id, files=[dict(item) for item in files],
+                             completed_count=completed, failed_count=failed,
+                             progress=min(99.9, (finished + (0.5 if partial else 0)) / total * 100),
+                             downloaded_bytes=downloaded + (current_bytes if partial else 0),
+                             speed=downloaded / elapsed if downloaded else None,
+                             eta=(elapsed / finished) * (total - finished) if finished else None)
+
+        for item in files:
+            if item["status"] == "completed":
+                continue
+            if stop():
+                raise pdf_collect.Cancelled
+            destination = pdf_collect.unique_path(output_dir, item["name"], taken)
+            taken.add(destination.name)
+            item["name"] = destination.name
+            item["status"] = "downloading"
+            item["error"] = None
+            try:
+                _, size = pdf_collect.download_pdf(
+                    item["url"], destination, allow_private=allow_private, should_stop=stop,
+                    on_progress=lambda current: push(current, True))
+            except pdf_collect.Cancelled:
+                raise
+            except pdf_collect.FetchError as exc:
+                failed += 1
+                item["status"] = "failed"
+                item["error"] = str(exc)[:300]
+            else:
+                completed += 1
+                downloaded += size
+                item["status"] = "completed"
+                item["size"] = size
+            push(0, False)
+
+        if stop():
+            raise pdf_collect.Cancelled
+        names = "、".join(item["name"] for item in files if item["status"] == "failed")[:200]
+        error = f"{failed} 个文件下载失败：{names}" if failed else None
+        if len(links) >= pdf_collect.MAX_PDF_FILES:
+            note = f"页面 PDF 数量达到上限 {pdf_collect.MAX_PDF_FILES} 个，可能还有链接未被抓取。"
+            error = f"{error}；{note}" if error else note
+        saved = [output_dir / item["name"] for item in files if item["status"] == "completed"]
+        with self.lock:
+            self.update_task(task_id, status="completed" if completed else "failed",
+                             files=[dict(item) for item in files],
+                             completed_count=completed, failed_count=failed,
+                             progress=100 if completed else None, speed=None, eta=None,
+                             downloaded_bytes=downloaded, error=error,
+                             filepath=str(saved[0]) if len(saved) == 1 else None,
+                             filename=saved[0].name if len(saved) == 1 else None)
+
     @staticmethod
     def _terminate(proc):
         if proc.poll() is not None:
@@ -332,6 +511,8 @@ class DownloadManager:
             return
         self.stopping.set()
         with self.lock:
+            for event in self.cancel_events.values():
+                event.set()
             for proc in self.processes.values():
                 self._terminate(proc)
         if self.worker:

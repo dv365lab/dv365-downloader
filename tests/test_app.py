@@ -130,6 +130,41 @@ class AppContractTests(unittest.TestCase):
         self.assertEqual(response.status_code, 409)
         self.assertEqual(len(self.manager.list_tasks()), 1)
 
+    def test_pdf_collection_task_can_be_queued(self):
+        response = self.client.post(
+            "/api/tasks",
+            json={"url": "https://staff.example.edu/~papers/", "kind": "pdf", "include_subpages": True},
+            headers=self.headers,
+        )
+        self.assertEqual(response.status_code, 201, response.get_data(as_text=True))
+        task = response.get_json()
+        self.assertEqual(task["kind"], "pdf")
+        self.assertEqual(task["quality"], "pdf")
+        self.assertTrue(task["include_subpages"])
+        self.assertEqual(task["file_count"], 0)
+        output = Path(task["output_dir"])
+        self.assertEqual(output.parent, Path(self.config["download_dir"]))
+        self.assertIn("staff.example.edu", output.name)
+
+    def test_invalid_download_kinds_are_rejected(self):
+        for kind in ("movie", "", None, 7):
+            with self.subTest(kind=kind):
+                response = self.client.post(
+                    "/api/tasks", json={"url": "https://example.com/page", "kind": kind},
+                    headers=self.headers,
+                )
+                self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.manager.list_tasks(), [])
+
+    def test_invalid_subpage_option_is_rejected(self):
+        response = self.client.post(
+            "/api/tasks",
+            json={"url": "https://example.com/page", "kind": "pdf", "include_subpages": "yes"},
+            headers=self.headers,
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.manager.list_tasks(), [])
+
     def test_cancel_queued_task_and_retry(self):
         task = self.create_task()
         response = self.post_action(task["id"], "cancel")

@@ -8,7 +8,27 @@
     queued: '等待下载', extracting: '解析链接', downloading: '下载中',
     processing: '处理文件', completed: '已完成', failed: '下载失败', cancelled: '已取消',
   };
-  const state = { config: null, tasks: [], filter: 'all', submitting: false, saving: false, connected: false };
+  const pdfStatusNames = {
+    queued: '等待抓取', extracting: '分析网页', downloading: '抓取中',
+    processing: '处理文件', completed: '已完成', failed: '抓取失败', cancelled: '已取消',
+  };
+  const kindLabels = {
+    video: {
+      placeholder: '粘贴视频链接，例如 https://www.bilibili.com/video/…',
+      action: '开始下载', busy: '正在添加…', note: '每次下载一个视频',
+      support: '支持 yt-dlp 兼容站点，实际可用性取决于站点限制',
+      prompt: '请输入以 http:// 或 https:// 开头的视频网址。',
+      done: '已加入下载队列，完成后会保存到本地。',
+    },
+    pdf: {
+      placeholder: '粘贴网页地址，例如 http://staff.ustc.edu.cn/~wyu0725/FPGA/snug_collection/',
+      action: '开始抓取', busy: '正在分析…', note: '整页 PDF 一次抓完',
+      support: '抓取网页内所有 PDF 链接，非 PDF 内容会自动跳过',
+      prompt: '请输入以 http:// 或 https:// 开头的网页地址。',
+      done: '已加入抓取队列，页面内的 PDF 会保存到本地。',
+    },
+  };
+  const state = { config: null, tasks: [], filter: 'all', kind: 'video', submitting: false, saving: false, connected: false };
   const cardCache = new Map();
   const pendingActions = new Set();
   const form = $('#download-form');
@@ -47,7 +67,7 @@
     window.setTimeout(() => item.remove(), isError ? 6500 : 4200);
   }
 
-  async function api(path, method = 'GET', body) {
+  async function api(path, method = 'GET', body, retrySession = true) {
     const headers = { Accept: 'application/json' };
     if (method !== 'GET') {
       if (!state.config?.csrf_token) throw new Error('应用尚未连接，请稍后重试。');
@@ -66,7 +86,14 @@
     let data;
     try { data = await response.json(); }
     catch { throw new Error(`服务返回了无法读取的响应（${response.status}）。`); }
-    if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : `请求失败（${response.status}），请重试。`);
+    if (!response.ok) {
+      if (retrySession && method !== 'GET' && response.status === 403
+          && data.error === '页面会话已失效，请刷新页面后重试。') {
+        applyConfig(await api('/api/config'));
+        return api(path, method, body, false);
+      }
+      throw new Error(typeof data.error === 'string' ? data.error : `请求失败（${response.status}），请重试。`);
+    }
     return data;
   }
 
@@ -79,10 +106,23 @@
   }
 
   function updateStartButton() {
+    const labels = kindLabels[state.kind];
     startButton.disabled = !state.config || !state.connected || state.submitting;
-    startButton.querySelector('span').textContent = state.submitting ? '正在添加…' : '开始下载';
+    startButton.querySelector('span').textContent = state.submitting ? labels.busy : labels.action;
     $('#save-settings').disabled = !state.config || !state.connected || state.saving;
     $('#save-settings').textContent = state.saving ? '保存中…' : '保存设置';
+  }
+
+  function applyKind() {
+    const labels = kindLabels[state.kind];
+    const collection = state.kind === 'pdf';
+    $('#quality-field').hidden = collection;
+    $('#subpage-field').hidden = !collection;
+    urlInput.placeholder = labels.placeholder;
+    $('#support-copy').textContent = labels.support;
+    $('#download-note').textContent = labels.note;
+    setMessage($('#form-message'), '');
+    updateStartButton();
   }
 
   function applyConfig(config) {
@@ -144,7 +184,141 @@
     return button;
   }
 
+  function progressRow(task, text, progress) {
+    const row = element('div', 'task-progress-row');
+    const track = element('div', 'progress-track');
+    track.setAttribute('role', 'progressbar');
+    track.setAttribute('aria-label', text);
+    track.setAttribute('aria-valuemin', '0');
+    track.setAttribute('aria-valuemax', '100');
+    const fill = element('div', 'progress-fill');
+    const numeric = progress !== null && progress !== undefined && Number.isFinite(Number(progress));
+    const value = numeric ? Math.max(0, Math.min(100, Number(progress))) : null;
+    track.classList.toggle('is-indeterminate', value === null && task.status !== 'queued');
+    if (value !== null) {
+      track.setAttribute('aria-valuenow', String(Math.round(value)));
+      fill.style.width = `${value}%`;
+    } else {
+      track.setAttribute('aria-valuetext', (task.kind === 'pdf' ? pdfStatusNames : statusNames)[task.status] || '');
+    }
+    track.append(fill);
+    row.append(track, element('span', 'task-progress-text', text));
+    return row;
+  }
+
+  function sourceLink(task, title) {
+    const sourceUrl = parseVideoUrl(task.url);
+    if (!sourceUrl) return null;
+    const source = element('a', '', sourceUrl.hostname.replace(/^www\./, ''));
+    source.href = sourceUrl.href;
+    source.target = '_blank';
+    source.rel = 'noopener noreferrer';
+    source.title = task.url;
+    source.setAttribute('aria-label', `查看原页面：${title}`);
+    return source;
+  }
+
+  function buildPdfCard(task) {
+    const knownStatus = Object.hasOwn(pdfStatusNames, task.status) ? task.status : 'queued';
+    const card = element('article', `task-card status-${knownStatus}`);
+    card.dataset.taskId = task.id;
+    const media = element('div', 'task-media');
+    media.setAttribute('aria-hidden', 'true');
+    media.append(icon('file'));
+    card.append(media);
+
+    const body = element('div', 'task-body');
+    const heading = element('div', 'task-heading');
+    const title = task.title || parseVideoUrl(task.url)?.hostname || '正在分析网页…';
+    const titleNode = element('h3', 'task-title', title);
+    titleNode.title = title;
+    const badge = element('span', 'status-badge');
+    badge.append(element('span', 'small-dot'), document.createTextNode(pdfStatusNames[knownStatus]));
+    heading.append(titleNode, badge);
+    body.append(heading);
+
+    const total = Number(task.file_count) || 0;
+    const completed = Number(task.completed_count) || 0;
+    const failed = Number(task.failed_count) || 0;
+    const done = completed + failed;
+    const meta = element('div', 'task-meta');
+    const source = sourceLink(task, title);
+    if (source) appendMeta(meta, source);
+    appendMeta(meta, element('span', 'quality-tag', 'PDF 合集'));
+    if (total) appendMeta(meta, element('span', '', `${total} 个文件`));
+    const timestamp = formatTime(task.created_at);
+    if (timestamp) appendMeta(meta, element('span', '', timestamp));
+    body.append(meta);
+
+    if (activeStatuses.has(task.status)) {
+      const label = total ? `${done} / ${total}` : knownStatus === 'queued' ? '排队中' : '分析中';
+      body.append(progressRow(task, label, total ? task.progress : null));
+    }
+
+    if (task.error) body.append(element('p', 'task-error', task.error));
+
+    const failures = (task.files || []).filter((item) => item.status === 'failed');
+    if (failures.length) {
+      const list = element('ul', 'task-files');
+      failures.slice(0, 6).forEach((item) => {
+        const row = element('li');
+        row.append(icon('alert'), element('span', 'file-name', item.name || '未命名文件'),
+                   element('span', 'file-error', item.error || '下载失败'));
+        list.append(row);
+      });
+      if (failures.length > 6) list.append(element('li', '', `…另有 ${failures.length - 6} 个失败`));
+      body.append(list);
+    }
+
+    const subline = element('div', 'task-subline');
+    const detail = element('div', 'task-detail');
+    if (task.status === 'downloading') {
+      if (total) detail.append(element('span', '', `已下载 ${done} / ${total} 个文件`));
+      if (task.downloaded_bytes > 0) detail.append(element('span', '', formatBytes(task.downloaded_bytes)));
+      if (task.speed > 0) detail.append(element('span', '', `${formatBytes(task.speed)}/s`));
+      const eta = formatEta(task.eta);
+      if (eta) detail.append(element('span', '', `剩余 ${eta}`));
+    } else if (task.status === 'completed') {
+      const savedText = element('span', '', `已保存 ${completed} 个 PDF`);
+      savedText.title = task.output_dir || '';
+      detail.append(savedText);
+      if (task.downloaded_bytes > 0) detail.append(element('span', '', formatBytes(task.downloaded_bytes)));
+      if (failed) detail.append(element('span', '', `${failed} 个未成功`));
+    } else {
+      const copy = {
+        queued: '任务已加入队列，稍后开始分析网页',
+        extracting: '正在读取网页并查找 PDF 链接…',
+        processing: '正在整理已下载的文件…',
+        failed: '可检查网页地址后重新抓取',
+        cancelled: '已停止，已经下载的 PDF 保留在本地',
+      };
+      detail.append(element('span', '', copy[task.status] || ''));
+    }
+
+    const actions = element('div', 'task-actions');
+    if (activeStatuses.has(task.status)) {
+      actions.append(actionButton(task, 'cancel', '取消', 'x', 'task-action-danger'));
+    }
+    if (task.status === 'failed' || task.status === 'cancelled' || failed) {
+      actions.append(actionButton(task, 'retry', '重新抓取', 'retry', 'task-action-retry'));
+    }
+    actions.append(actionButton(task, 'open', '打开文件夹', 'folder'));
+    if (task.filename) {
+      const fileLink = element('a', 'task-action');
+      fileLink.href = `/api/tasks/${encodeURIComponent(task.id)}/file`;
+      fileLink.download = task.filename.split(/[\\/]/).pop();
+      fileLink.title = task.filename;
+      fileLink.append(icon('arrow-down'), document.createTextNode('获取文件'));
+      actions.append(fileLink);
+    }
+    subline.append(detail, actions);
+    body.append(subline);
+    card.append(body);
+    return card;
+  }
+
   function buildCard(task) {
+    if (task.kind === 'pdf') return buildPdfCard(task);
     const knownStatus = Object.hasOwn(statusNames, task.status) ? task.status : 'queued';
     const card = element('article', `task-card status-${knownStatus}`);
     card.dataset.taskId = task.id;
@@ -179,26 +353,10 @@
     body.append(meta);
 
     if (activeStatuses.has(task.status)) {
-      const row = element('div', 'task-progress-row');
-      const track = element('div', 'progress-track');
-      track.setAttribute('role', 'progressbar');
-      track.setAttribute('aria-label', `${title} 下载进度`);
-      track.setAttribute('aria-valuemin', '0');
-      track.setAttribute('aria-valuemax', '100');
-      const fill = element('div', 'progress-fill');
       const numeric = task.progress !== null && task.progress !== undefined && Number.isFinite(Number(task.progress));
-      const progress = numeric ? Math.max(0, Math.min(100, Number(task.progress))) : null;
-      const isIndeterminate = progress === null && task.status !== 'queued';
-      track.classList.toggle('is-indeterminate', isIndeterminate);
-      if (progress !== null) {
-        track.setAttribute('aria-valuenow', String(Math.round(progress)));
-        fill.style.width = `${progress}%`;
-      } else {
-        track.setAttribute('aria-valuetext', statusNames[knownStatus]);
-      }
-      track.append(fill);
-      row.append(track, element('span', 'task-progress-text', progress !== null ? `${Math.round(progress)}%` : task.status === 'queued' ? '排队中' : '处理中'));
-      body.append(row);
+      const text = numeric ? `${Math.round(Math.max(0, Math.min(100, Number(task.progress))))}%`
+        : task.status === 'queued' ? '排队中' : '处理中';
+      body.append(progressRow(task, text, task.progress));
     }
 
     if (task.status === 'failed' && task.error) body.append(element('p', 'task-error', task.error));
@@ -315,14 +473,14 @@
     empty.hidden = visible.length > 0;
     if (!empty.hidden) {
       const copy = {
-        all: ['你的收藏，从一个链接开始', '在上方粘贴视频网址，下载进度会显示在这里。'],
-        active: ['暂时没有正在进行的下载', '添加一个视频，开始你的下一次收藏。'],
-        completed: ['好视频正在路上', '下载完成的视频会显示在这里。'],
+        all: ['你的收藏，从一个链接开始', '在上方粘贴视频链接或网页地址，进度会显示在这里。'],
+        active: ['暂时没有正在进行的下载', '添加一个视频或网页，开始你的下一次收藏。'],
+        completed: ['好内容正在路上', '下载完成的视频和 PDF 会显示在这里。'],
         failed: ['一切顺利，暂无未成功的任务', '下载失败或取消的任务会显示在这里，支持重新下载。'],
       };
       $('#empty-title').textContent = copy[state.filter][0];
       $('#empty-description').textContent = copy[state.filter][1];
-      $('#focus-url').firstChild.textContent = count.all === 0 ? '添加第一个视频' : '添加一个视频';
+      $('#focus-url').firstChild.textContent = count.all === 0 ? '添加第一个任务' : '添加一个任务';
     }
   }
 
@@ -365,27 +523,40 @@
     button.addEventListener('click', () => chooseFilter(button.dataset.filter || button.dataset.navFilter));
   });
 
+  form.querySelectorAll('input[name="kind"]').forEach((input) => {
+    input.addEventListener('change', () => {
+      if (!input.checked) return;
+      state.kind = input.value;
+      applyKind();
+      urlInput.focus();
+    });
+  });
+
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (state.submitting || !state.config || !state.connected) return;
+    const labels = kindLabels[state.kind];
+    const collection = state.kind === 'pdf';
     const url = urlInput.value.trim();
     if (!parseVideoUrl(url)) {
-      setMessage($('#form-message'), '请输入以 http:// 或 https:// 开头的视频网址。');
+      setMessage($('#form-message'), labels.prompt);
       urlInput.focus();
       return;
     }
-    const quality = new FormData(form).get('quality') || 'best';
+    const quality = collection ? 'pdf' : (new FormData(form).get('quality') || 'best');
     state.submitting = true;
     revision += 1;
     updateStartButton();
     setMessage($('#form-message'), '');
     try {
-      const task = await api('/api/tasks', 'POST', { url, quality });
+      const body = { url, quality, kind: state.kind };
+      if (collection) body.include_subpages = $('#include-subpages').checked;
+      const task = await api('/api/tasks', 'POST', body);
       revision += 1;
       mergeTask(task);
       if (urlInput.value.trim() === url) urlInput.value = '';
       chooseFilter('all');
-      toast('已加入下载队列，完成后会保存到本地。');
+      toast(labels.done);
     } catch (error) {
       setMessage($('#form-message'), error.message);
     } finally {
@@ -498,6 +669,7 @@
 
   window.addEventListener('pagehide', () => window.clearTimeout(pollTimer));
   window.addEventListener('pageshow', (event) => { if (event.persisted) poll(); });
+  applyKind();
   renderTasks();
   poll();
 })();

@@ -29,6 +29,7 @@
     <symbol id="i-arrow-up-right" viewBox="0 0 24 24"><path d="M6 18 18 6M6 6h12v12"/></symbol>
     <symbol id="i-computer" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/></symbol>
     <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 11 3 3 5-5"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7l-4-4Z"/><path d="M14 3v4h4M9 12h6m-6 4h4"/></symbol>
   </svg>
 
   <div class="app-shell">
@@ -51,19 +52,23 @@
 
     <main class="main-content">
       <header class="page-header">
-        <div><div class="eyebrow"><span class="eyebrow-line"></span>YOUR LOCAL VIDEO SPACE</div><h1>好视频，值得留下。</h1><p class="page-description">粘贴一个链接，把喜欢的视频收藏到本地。</p></div>
+        <div><div class="eyebrow"><span class="eyebrow-line"></span>YOUR LOCAL VIDEO SPACE</div><h1>好视频，值得留下。</h1><p class="page-description">粘贴一个链接，把喜欢的视频与 PDF 收藏到本地。</p></div>
         <div class="header-actions"><button class="button button-outline" id="open-folder" type="button" aria-label="打开下载目录"><svg class="icon"><use href="#i-folder"/></svg><span>打开下载目录</span></button><button class="icon-button settings-button" id="open-settings" type="button" aria-label="打开设置" title="设置"><svg class="icon"><use href="#i-settings"/></svg></button></div>
       </header>
 
       <section class="download-card" aria-labelledby="download-heading">
         <div class="card-topline"><div class="card-title"><span class="section-number">01 /</span><h2 id="download-heading">开始一次新下载</h2></div><span class="local-badge"><span class="small-dot"></span>本地下载</span></div>
         <form id="download-form">
-          <label class="sr-only" for="video-url">视频网址</label>
-          <div class="url-field"><svg class="icon link-icon" aria-hidden="true"><use href="#i-link"/></svg><input id="video-url" name="url" type="url" placeholder="粘贴视频链接，例如 https://www.bilibili.com/video/…" autocomplete="off" spellcheck="false" required aria-describedby="url-help form-message"><button class="paste-button" id="paste-url" type="button" aria-label="粘贴视频链接"><svg class="icon"><use href="#i-clipboard"/></svg><span>粘贴</span></button></div>
-          <div class="download-options"><fieldset class="quality-options"><legend>下载质量</legend><div class="quality-segments"><label><input type="radio" name="quality" value="best" checked><span>最佳画质</span></label><label><input type="radio" name="quality" value="1080"><span>1080p</span></label><label><input type="radio" name="quality" value="720"><span>720p</span></label><label><input type="radio" name="quality" value="audio"><span><svg class="icon"><use href="#i-music"/></svg>仅音频</span></label></div></fieldset><button class="button button-primary download-button" id="start-download" type="submit" disabled><svg class="icon"><use href="#i-arrow-down"/></svg><span>开始下载</span><kbd>↵</kbd></button></div>
+          <div class="mode-switch quality-segments" role="group" aria-label="下载类型">
+            <label><input type="radio" name="kind" value="video" checked><span><svg class="icon"><use href="#i-play"/></svg>单个视频</span></label>
+            <label><input type="radio" name="kind" value="pdf"><span><svg class="icon"><use href="#i-file"/></svg>网页 PDF 合集</span></label>
+          </div>
+          <label class="sr-only" for="video-url">视频或网页地址</label>
+          <div class="url-field"><svg class="icon link-icon" aria-hidden="true"><use href="#i-link"/></svg><input id="video-url" name="url" type="url" placeholder="粘贴视频链接，例如 https://www.bilibili.com/video/…" autocomplete="off" spellcheck="false" required aria-describedby="url-help form-message"><button class="paste-button" id="paste-url" type="button" aria-label="粘贴链接"><svg class="icon"><use href="#i-clipboard"/></svg><span>粘贴</span></button></div>
+          <div class="download-options"><fieldset class="quality-options" id="quality-field"><legend>下载质量</legend><div class="quality-segments"><label><input type="radio" name="quality" value="best" checked><span>最佳画质</span></label><label><input type="radio" name="quality" value="1080"><span>1080p</span></label><label><input type="radio" name="quality" value="720"><span>720p</span></label><label><input type="radio" name="quality" value="audio"><span><svg class="icon"><use href="#i-music"/></svg>仅音频</span></label></div></fieldset><label class="subpage-option" id="subpage-field" hidden><input type="checkbox" id="include-subpages"><span>同时进入子页面</span></label><button class="button button-primary download-button" id="start-download" type="submit" disabled><svg class="icon"><use href="#i-arrow-down"/></svg><span>开始下载</span><kbd>↵</kbd></button></div>
           <p class="form-message" id="form-message" role="alert" hidden></p>
         </form>
-        <div class="card-footnote" id="url-help"><span class="supported-copy"><svg class="icon"><use href="#i-shield"/></svg>支持 yt-dlp 兼容站点，实际可用性取决于站点限制</span><span class="single-video-note">每次下载一个视频</span></div>
+        <div class="card-footnote" id="url-help"><span class="supported-copy"><svg class="icon"><use href="#i-shield"/></svg><span id="support-copy">支持 yt-dlp 兼容站点，实际可用性取决于站点限制</span></span><span class="single-video-note" id="download-note">每次下载一个视频</span></div>
       </section>
 
       <section class="stats-grid" aria-label="下载概览">
@@ -76,7 +81,7 @@
         <div class="queue-header"><div class="queue-title"><h2 id="queue-heading">下载列表</h2><span class="queue-total" id="queue-total">0 个任务</span></div><span class="connection-status" id="connection-status" role="status"><span class="small-dot"></span><span>正在连接</span></span></div>
         <div class="queue-toolbar"><div class="filter-tabs" role="group" aria-label="筛选下载任务"><button class="filter-tab is-active" type="button" data-filter="all" aria-pressed="true">全部<span id="filter-all-count">0</span></button><button class="filter-tab" type="button" data-filter="active" aria-pressed="false">进行中<span id="filter-active-count">0</span></button><button class="filter-tab" type="button" data-filter="completed" aria-pressed="false">已完成<span id="filter-completed-count">0</span></button><button class="filter-tab" type="button" data-filter="failed" aria-pressed="false">未成功<span id="filter-failed-count">0</span></button></div><span class="queue-order">最近添加优先</span></div>
         <div class="task-list" id="task-list" aria-label="下载任务"></div>
-        <div class="empty-state" id="empty-state"><div class="empty-illustration" aria-hidden="true"><span class="empty-orbit orbit-one"></span><span class="empty-orbit orbit-two"></span><span class="empty-spark spark-one">+</span><span class="empty-spark spark-two">+</span><div class="empty-back-card"></div><div class="empty-video-card"><span class="empty-video-dot"></span><svg class="icon"><use href="#i-play"/></svg><span class="empty-video-line"></span></div><span class="empty-download"><svg class="icon"><use href="#i-arrow-down"/></svg></span></div><h3 id="empty-title">你的收藏，从一个链接开始</h3><p id="empty-description">在上方粘贴视频网址，下载进度会显示在这里。</p><button class="empty-action" type="button" id="focus-url">添加第一个视频<svg class="icon"><use href="#i-arrow-up-right"/></svg></button></div>
+        <div class="empty-state" id="empty-state"><div class="empty-illustration" aria-hidden="true"><span class="empty-orbit orbit-one"></span><span class="empty-orbit orbit-two"></span><span class="empty-spark spark-one">+</span><span class="empty-spark spark-two">+</span><div class="empty-back-card"></div><div class="empty-video-card"><span class="empty-video-dot"></span><svg class="icon"><use href="#i-play"/></svg><span class="empty-video-line"></span></div><span class="empty-download"><svg class="icon"><use href="#i-arrow-down"/></svg></span></div><h3 id="empty-title">你的收藏，从一个链接开始</h3><p id="empty-description">在上方粘贴视频链接或网页地址，进度会显示在这里。</p><button class="empty-action" type="button" id="focus-url">添加第一个任务<svg class="icon"><use href="#i-arrow-up-right"/></svg></button></div>
       </section>
 
       <footer class="page-footer"><span class="storage-summary"><svg class="icon"><use href="#i-folder"/></svg><span>保存至</span><button class="storage-path" id="storage-path" type="button" title="修改保存位置">正在读取…</button></span><span class="footer-note">珍藏所爱，也尊重创作。</span></footer>

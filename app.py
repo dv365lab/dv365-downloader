@@ -148,7 +148,9 @@ def create_app(data_dir: Path | None = None, start_worker: bool = True):
     @app.post("/api/tasks")
     def create_task():
         body = payload()
-        return jsonify(manager.create_task(body.get("url"), body.get("quality", "best"))), 201
+        return jsonify(manager.create_task(body.get("url"), body.get("quality", "best"),
+                                           kind=body.get("kind", "video"),
+                                           include_subpages=body.get("include_subpages", False))), 201
 
     @app.post("/api/tasks/<task_id>/cancel")
     def cancel_task(task_id):
