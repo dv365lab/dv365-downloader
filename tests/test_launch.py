@@ -1,5 +1,6 @@
 """Repeated launch should reopen the app without disturbing its download queue."""
 import contextlib
+import errno
 import io
 import json
 import os
@@ -61,6 +62,74 @@ class RepeatedLaunchTests(unittest.TestCase):
                 contextlib.redirect_stdout(io.StringIO()):
             application.main()
         browser.assert_not_called()
+
+    def test_repeated_launch_uses_recorded_fallback_port(self):
+        (self.data_dir / "server.port").write_text(f"{self.port}\n", encoding="ascii")
+        with patch.dict(os.environ, {"DV365_DOWNLOADER_DATA_DIR": str(self.data_dir)}), \
+                patch("sys.argv", ["app.py"]), \
+                patch("app.webbrowser.open", return_value=True) as browser, \
+                contextlib.redirect_stdout(io.StringIO()):
+            application.main()
+        browser.assert_called_once_with(f"http://127.0.0.1:{self.port}")
+
+
+class DynamicPortTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="dv365-downloader-port-")
+        self.data_dir = Path(self.temporary.name)
+        self.create_app = application.create_app
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def test_occupied_preferred_port_falls_back_to_an_available_port(self):
+        server = Mock()
+        server.effective_port = 9876
+        output = io.StringIO()
+        with patch.dict(os.environ, {"DV365_DOWNLOADER_DATA_DIR": str(self.data_dir)}), \
+                patch("sys.argv", ["app.py", "--no-browser"]), \
+                patch("app.create_app", side_effect=lambda: self.create_app(
+                    self.data_dir, start_worker=False)), \
+                patch("waitress.create_server",
+                      side_effect=[OSError(errno.EADDRINUSE, "Address already in use"), server]) as create_server, \
+                contextlib.redirect_stdout(output):
+            application.main()
+        self.assertEqual([call.kwargs["port"] for call in create_server.call_args_list], [8765, 0])
+        self.assertIn("http://127.0.0.1:9876", output.getvalue())
+        server.run.assert_called_once_with()
+        server.close.assert_called_once_with()
+        self.assertFalse((self.data_dir / "server.port").exists())
+
+    def test_available_preferred_port_is_used_without_fallback(self):
+        server = Mock()
+        server.effective_port = 8765
+        with patch.dict(os.environ, {"DV365_DOWNLOADER_DATA_DIR": str(self.data_dir)}), \
+                patch("sys.argv", ["app.py", "--no-browser"]), \
+                patch("app.create_app", side_effect=lambda: self.create_app(
+                    self.data_dir, start_worker=False)), \
+                patch("waitress.create_server", return_value=server) as create_server, \
+                contextlib.redirect_stdout(io.StringIO()):
+            application.main()
+        create_server.assert_called_once()
+        self.assertEqual(create_server.call_args.kwargs["port"], 8765)
+
+    def test_non_port_binding_errors_are_not_hidden_by_fallback(self):
+        with patch.dict(os.environ, {"DV365_DOWNLOADER_DATA_DIR": str(self.data_dir)}), \
+                patch("sys.argv", ["app.py", "--no-browser"]), \
+                patch("app.create_app", side_effect=lambda: self.create_app(
+                    self.data_dir, start_worker=False)), \
+                patch("waitress.create_server",
+                      side_effect=OSError(errno.EACCES, "Permission denied")) as create_server, \
+                contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as stopped:
+                application.main()
+        self.assertEqual(stopped.exception.code, 1)
+        create_server.assert_called_once()
+
+    def test_windows_reserved_port_error_can_use_fallback(self):
+        error = OSError("Permission denied")
+        error.winerror = 10013
+        self.assertTrue(application.port_in_use(error))
 
 
 class InstanceRecognitionTests(unittest.TestCase):

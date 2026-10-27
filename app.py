@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import errno
 import importlib.metadata
 import json
 import os
@@ -12,6 +13,7 @@ import threading
 import time
 import webbrowser
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, build_opener
 
@@ -26,6 +28,21 @@ BASE_DIR = Path(__file__).resolve().parent
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         return None
+
+
+def port_in_use(error: OSError) -> bool:
+    """Recognize address conflicts on POSIX and Windows."""
+    # Windows can report an occupied or reserved local port as WSAEACCES (10013).
+    return error.errno == errno.EADDRINUSE or getattr(error, "winerror", None) in {10048, 10013}
+
+
+def recorded_address(data_dir: Path) -> str | None:
+    """Find the last bound port so repeated launches also work after a fallback."""
+    try:
+        port = int((data_dir / "server.port").read_text(encoding="ascii").strip())
+    except (OSError, ValueError):
+        return None
+    return f"http://127.0.0.1:{port}" if 1 <= port <= 65535 else None
 
 
 def running_instance(address: str, data_dir: Path) -> bool:
@@ -56,6 +73,9 @@ def running_instance(address: str, data_dir: Path) -> bool:
         with opener.open(address + "/", timeout=0.8) as response:
             page = response.read(65536).decode("utf-8")
         return "<title>音视频下载 dv365-downloader · 本地视频下载</title>" in page and '/static/app.js' in page
+    except HTTPError as exc:
+        exc.close()
+        return False
     except (OSError, ValueError, UnicodeError):
         return False
 
@@ -181,14 +201,15 @@ def create_app(data_dir: Path | None = None, start_worker: bool = True):
 
 def main():
     parser = argparse.ArgumentParser(description="音视频下载 dv365-downloader · 本地视频下载器")
-    parser.add_argument("--port", type=int, default=8765, help="本机端口（默认 8765）")
+    parser.add_argument("--port", type=int, default=8765,
+                        help="首选本机端口（默认 8765；被占用时自动选择可用端口）")
     parser.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:
         parser.error("端口必须在 1–65535 之间")
     from waitress import create_server
 
-    address = f"http://127.0.0.1:{args.port}"
+    preferred_address = f"http://127.0.0.1:{args.port}"
     try:
         app = create_app()
     except TaskError as exc:
@@ -196,11 +217,16 @@ def main():
             data_dir = Path(os.environ.get("DV365_DOWNLOADER_DATA_DIR") or BASE_DIR / ".data")
             # Another launcher may have acquired the lock just before binding HTTP.
             for attempt in range(4):
-                if running_instance(address, data_dir):
-                    print(f"dv365-downloader is already running: {address}", flush=True)
-                    if not args.no_browser:
-                        webbrowser.open(address)
-                    return
+                addresses = [preferred_address]
+                fallback_address = recorded_address(data_dir)
+                if fallback_address and fallback_address != preferred_address:
+                    addresses.append(fallback_address)
+                for address in addresses:
+                    if running_instance(address, data_dir):
+                        print(f"dv365-downloader is already running: {address}", flush=True)
+                        if not args.no_browser:
+                            webbrowser.open(address)
+                        return
                 if attempt < 3:
                     time.sleep(0.15)
         parser.exit(1, f"无法启动 dv365-downloader：{exc}\n")
@@ -209,10 +235,25 @@ def main():
     manager = app.config["MANAGER"]
     atexit.register(manager.shutdown)
     try:
-        server = create_server(app, host="127.0.0.1", port=args.port, threads=6)
-    except OSError:
+        try:
+            server = create_server(app, host="127.0.0.1", port=args.port, threads=6)
+        except OSError as exc:
+            if not port_in_use(exc):
+                raise
+            print(f"Port {args.port} is already in use; selecting an available port automatically.",
+                  flush=True)
+            server = create_server(app, host="127.0.0.1", port=0, threads=6)
+    except OSError as exc:
         manager.shutdown()
-        parser.exit(1, f"端口 {args.port} 已被占用或不可用，请使用 --port 指定其他端口。\n")
+        parser.exit(1, f"无法启动 dv365-downloader：{exc}\n")
+
+    actual_port = server.effective_port
+    address = f"http://127.0.0.1:{actual_port}"
+    port_file = manager.data_dir / "server.port"
+    try:
+        port_file.write_text(f"{actual_port}\n", encoding="ascii")
+    except OSError as exc:
+        print(f"Warning: could not record the active port for repeated launches: {exc}", flush=True)
     print(f"\n  dv365-downloader: {address}\n  Downloads: {manager.download_dir}\n  Ctrl+C to stop.\n", flush=True)
     if not args.no_browser:
         threading.Timer(0.6, lambda: webbrowser.open(address)).start()
@@ -222,6 +263,11 @@ def main():
         pass
     finally:
         server.close()
+        try:
+            if port_file.read_text(encoding="ascii").strip() == str(actual_port):
+                port_file.unlink()
+        except OSError:
+            pass
         manager.shutdown()
 
 

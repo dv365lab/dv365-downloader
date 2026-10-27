@@ -53,7 +53,7 @@ try {
 
     $appArgs = @((Join-Path $PSScriptRoot 'app.py'), '--port', $Port.ToString())
     if ($NoBrowser) { $appArgs += '--no-browser' }
-    Write-Host "Starting dv365-downloader at http://127.0.0.1:$Port"
+    Write-Host "Starting dv365-downloader (preferred port: $Port; automatic fallback if busy)"
     Write-Host 'Keep this window open while downloading. Press Ctrl+C to stop.'
     & $venvPython @appArgs
     exit $LASTEXITCODE
